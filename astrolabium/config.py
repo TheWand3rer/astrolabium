@@ -1,0 +1,5 @@
+path_outdir = "out"
+path_temp = "temp"
+path_cataloguedir = "catalogues"
+path_datadir = "data"
+path_entitiesdir = "entities"
