@@ -1,0 +1,32 @@
+[project]
+name = "astrolabium"
+description = "Stellar catalogue parser and creator"
+authors = [
+    {name = "Vindemiatrix Collective", email="vindemiatrixcollective@gmail.com"}
+]
+version = "0.1.0"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+keywords=[
+    "astronomy",
+    "cosmology",
+    "space",
+    "science",
+    "stars",
+    "star",
+    "double",
+    "binary"
+]
+dependencies = [
+    "astroquery",
+    "astropy",
+    "anytree",
+    "tqdm",
+    "SPARQLWrapper"
+]
+
+[tool.setuptools]
+packages = ['astrolabium']
+
+
