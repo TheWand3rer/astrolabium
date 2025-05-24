@@ -1,10 +1,10 @@
 [project]
 name = "astrolabium"
-description = "Stellar catalogue parser and creator"
+description = "This project combines data from several stellar catalogues (e.g., Hipparcos, WDS, Orb6) as well as Wikidata, to create a data structure representing a set of star systems, their hierarchy (in case of multiple stars in the systems) and their properties."
 authors = [
     {name = "Vindemiatrix Collective", email="vindemiatrixcollective@gmail.com"}
 ]
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
