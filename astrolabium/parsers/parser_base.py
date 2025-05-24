@@ -8,9 +8,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class ParserBase:
     def __init__(
         self,
+        catalogue_label,
         catalogue_url,
         catalogue_local,
         out_filename,
@@ -22,6 +24,7 @@ class ParserBase:
         compressed=False,
         use_separator: str | None = None,
     ):
+        self.catalogue_label = catalogue_label
         self.catalogue_url = catalogue_url
         self.catalogue_local = catalogue_local
         self.catalogue_title = catalogue_title
@@ -51,7 +54,7 @@ class ParserBase:
 
         response = requests.get(self.catalogue_url, stream=True, headers=headers, verify=False)
         with open(self.catalogue_local, "wb") as file:
-            for data in tqdm(response.iter_content(chunk_size=1024), unit="kB", desc="Downloading"):
+            for data in tqdm(response.iter_content(chunk_size=1024), unit="kB", desc=f"Downloading {self.catalogue_label}"):
                 file.write(data)
 
     def parse(self, n=0) -> list:
@@ -67,7 +70,7 @@ class ParserBase:
 
             count = 0
             line_idx = 0
-            for line in tqdm(f, desc="Parsing", total=total_lines, colour="GREEN"):
+            for line in tqdm(f, desc=f"Parsing {self.catalogue_label}", total=total_lines, colour="GREEN"):
                 line_idx += 1
                 if n > 0 and count == n or line_idx == total_lines:
                     break

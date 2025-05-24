@@ -34,6 +34,7 @@ class Orb6Parser(ParserBase):
     def __init__(self):
         ParserBase.__init__(
             self,
+            "ORB6",
             self.__orb6_catalogue_url,
             self.__orb6_catalogue_local,
             "orb6orbits",

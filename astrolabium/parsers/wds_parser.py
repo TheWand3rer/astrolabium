@@ -35,6 +35,7 @@ class WDSParser(ParserBase):
     def __init__(self, compressed=False):
         ParserBase.__init__(
             self,
+            "WDS",
             self.__wds_catalogue_url,
             self.__wds_catalogue_local,
             "wds",

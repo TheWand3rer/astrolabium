@@ -30,6 +30,7 @@ class GlieseParser(ParserBase):
     def __init__(self):
         ParserBase.__init__(
             self,
+            "GJ",
             self.__gliese_catalogue_url,
             self.__gliese_catalogue_local,
             "gliese",

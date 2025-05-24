@@ -57,6 +57,7 @@ class HipparcosParser(ParserBase):
         self.__j2000 = j2000
         ParserBase.__init__(
             self,
+            "HIP",
             catalogue_url="https://cdsarc.u-strasbg.fr/viz-bin/nph-Cat/txt.gz?I/311/hip2.dat.gz",
             catalogue_local=f"{config.path_cataloguedir}/hipparcos_2007.dat",
             out_filename="hipparcos2007",

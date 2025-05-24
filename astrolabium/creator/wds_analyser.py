@@ -9,6 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class WDSAnalyser:
     def __init__(self, crossref_data: list[Any], verbose=False):
         self.verbose = verbose
@@ -46,7 +47,7 @@ class WDSAnalyser:
         entries: dict[str, HipparcosEntry | None] = {}
         for entry in crossref_entries:
             comp = entry["WDS"][11:]
-            component:str = None
+            component: str = None
             if len(comp) == 1:
                 component = comp
             elif len(comp) == 2:
@@ -74,7 +75,7 @@ class WDSAnalyser:
 
         return entries
 
-    def __detect_hierarchy(self, wds_id: str, components: List[WDSEntry]) -> System|None:
+    def __detect_hierarchy(self, wds_id: str, components: List[WDSEntry]) -> System | None:
         """
         Builds a nested hierarchy of star components.
         """
@@ -140,7 +141,7 @@ class WDSAnalyser:
                     raise ValueError("Unexpected branch")
 
         if self.__check_duplicates(root) and self.verbose:
-            logger.info(f"${wds_id} checked: no duplicates")
+            logger.info(f"{wds_id} checked: no duplicates")
         else:
             self.__prune(root, stars)
             if not self.__check_duplicates(root):
@@ -233,7 +234,7 @@ class WDSAnalyser:
                 companion_star = orbit.comp.split(",")[1]
 
             node = find(com, lambda n: n.name == companion_star)
-            if node is None :
+            if node is None:
                 if self.verbose:
                     logger.info(f"Star [{companion_star}] is not present in WDS catalogues or is not physical")
                 continue
@@ -283,10 +284,10 @@ class WDSAnalyser:
         logger.info(f"Analysed {len(self.wds_groups)} system, of which {invalid_systems} were invalid")
         return systems
 
-    def query_system(self, wds_id: str = "14396-6050") -> System|None:
+    def query_system(self, wds_id: str = "14396-6050") -> System | None:
         """
         Reconstructs the hierarchy of the given WDS id entries using information from ORB6.
         "14396-6050" corresponds to the entries for the Alpha Centauri AB(C) system
         """
-        wds_entries = self.__wds.select_entries_grouped(wds_id)
-        return self.__detect_hierarchy(wds_id, wds_entries.values())
+        wds_entries = self.__wds.select_entries([wds_id])
+        return self.__detect_hierarchy(wds_id, wds_entries)

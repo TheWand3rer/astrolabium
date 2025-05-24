@@ -9,6 +9,7 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
+
 class CatalogueCreator:
     def __init__(
         self,
@@ -24,17 +25,18 @@ class CatalogueCreator:
         self.iau_entities_path = f"{config.path_entitiesdir}/IAU_entities"
         self.output_catalogue_path = f"{config.path_outdir}/catalogue_{self.lyr}_ly"
         self._use_entities = True
-        logging.basicConfig(format="%(message)s")
+        self._analyser: WDSAnalyser = None
         logging.root.setLevel(logging.INFO)
+        logging.basicConfig(format="%(message)s")
         logger.info("Astrolabium v0.1.0 by Vindemiatrix Collective (https://vindemiatrixcollective.com)\n")
         io.create_directory(config.path_entitiesdir)
         io.create_directory(config.path_datadir)
         io.create_directory(config.path_temp)
         io.create_directory(config.path_outdir)
-        if (not io.file_exists(entities_path)):
+        if not io.file_exists(entities_path):
             self._use_entities = False
         pass
-    
+
     @classmethod
     def download_and_parse_catalogues(cls):
         io.create_directory(config.path_cataloguedir)
@@ -44,20 +46,24 @@ class CatalogueCreator:
         hip = Hipparcos(catalogue_data=stars)
         Crossref.build_table("HIP", [str(x.HIP) for x in hip.entries], Crossref.catalogue_labels, save=True)
 
-    def find_star_systems(self, crossref_filters: list[Callable] = None, rebuild=False) -> list[System]:
+    def find_star_systems(self, query_filters: list[Callable] = None, rebuild=False) -> list[System]:
         hip_stars_path = f"{config.path_temp}/catalogue_stars_{self.lyr}_ly"
-        systems_within_distance = io.read_list_json(hip_stars_path)
-        if systems_within_distance is None or len(systems_within_distance) == 0 or rebuild:
-            logger.info(f"Filtering star systems within {self.lyr} ly")
+        if not rebuild:
+            systems_within_distance = io.read_list_json(hip_stars_path)
+        else:
+            systems_within_distance = None
 
-            if crossref_filters is None:
-                crossref_filters = [
+        if not systems_within_distance or rebuild:
+            logger.info(f"Filtering star systems within {self.lyr} ly")
+            if not query_filters:
+                query_filters = [
                     lambda star: filters.distance(star, self.lyr),
                     lambda star: filters.any_catalogues(star, ["b", "fl", "Name"]),
                 ]
+
             crossref = Crossref()
             hipparcos = Hipparcos()
-            systems_within_distance = crossref.query_filters(hipparcos.entries, "HIP", crossref_filters, hip_stars_path)
+            systems_within_distance = crossref.query_filters(hipparcos.entries, "HIP", query_filters, hip_stars_path)
 
         if systems_within_distance is None or len(systems_within_distance) == 0:
             raise ValueError("No single stars found: are the filters too stringent?")
@@ -77,28 +83,33 @@ class CatalogueCreator:
 
         return systems
 
-    def find_multiple_systems(self, rebuild=False):
+    def find_multiple_systems(self, query_filters: list[Callable] = None, rebuild=False):
         wds_stars_path = f"{config.path_temp}/wds_stars_{self.lyr}_ly"
-        mult_systems = io.read_list_json(wds_stars_path)
+        if not rebuild:
+            mult_systems = io.read_list_json(wds_stars_path)
+        else:
+            mult_systems = None
 
-        if mult_systems is None or len(mult_systems) == 0 or rebuild:
+        if not mult_systems or rebuild:
             hipparcos = Hipparcos()
             wds = WDS()
-            query_filters = [
-                lambda star: filters.distance(star, self.lyr),
-                lambda star: filters.any_catalogues(star, ["WDS"]),
-                lambda star: filters.any_catalogues(star, ["b", "fl", "Name"]),
-                lambda star: filters.wds_is_physical(star, wds),
-            ]
+            if not query_filters:
+                query_filters = [
+                    lambda star: filters.distance(star, self.lyr),
+                    lambda star: filters.any_catalogues(star, ["WDS"]),
+                    lambda star: filters.any_catalogues(star, ["b", "fl", "Name"]),
+                    lambda star: filters.wds_is_physical(star, wds),
+                ]
+
             crossref = Crossref()
             mult_systems = crossref.query_filters(hipparcos.entries, "HIP", query_filters, wds_stars_path)
 
         if mult_systems is None or len(mult_systems) == 0:
             raise ValueError("No multiple stars found: are the filters too stringent?")
         logger.info("Analysing multiple star systems")
-        analysis = WDSAnalyser(crossref_data=mult_systems, verbose=self.verbose)
+        self._analyser = WDSAnalyser(crossref_data=mult_systems, verbose=self.verbose)
 
-        systems = analysis.analyse()
+        systems = self._analyser.analyse()
         return systems
 
     def __match_systems_to_entities(self, systems: list[System], save=True):
@@ -112,7 +123,7 @@ class CatalogueCreator:
         if not wiki_entities:
             wiki_entities = io.read_dict_json(self.entities_path)
             if not wiki_entities:
-                logger.warning("Wikidata entity file not available, retrieving from wikidata")
+                logger.warning("WARNING: Wikidata entity file not available, retrieving from wikidata")
                 wiki_entities = WikiEntities.retrieve_entities_from_file(catalogue_ids, self.entities_path)
             wikiCatalog = WikiEntities(wiki_entities)
             wikiCatalog.filter(lambda e: f"HIP {e.cat['hip']}" in catalogue_ids, "> Selecting stars in Hipparcos 2007 catalogue")
@@ -155,16 +166,22 @@ class CatalogueCreator:
         data = gaia.retrieve_data(source_ids)
         gaia.update_data(stars_dr3, data)
 
-    def create_galaxy(self, rebuild=False, match_to_wikidata_entities=True, save=True):
-        single_stars = self.find_star_systems(rebuild=rebuild)
-        multiple_stars = self.find_multiple_systems(rebuild=rebuild)
+    def query_multiple_system(self, wds_id: str):
+        if self._analyser is None:
+            raise ValueError("Please run <find_multiple_systems()> first.")
+
+        self._analyser.query_system(wds_id)
+
+    def create(self, single_filters=list[Callable] | None, multiple_filters=list[Callable] | None, rebuild=False, match_to_wikidata_entities=True, save=True):
+        single_stars = self.find_star_systems(query_filters=single_filters, rebuild=rebuild)
+        multiple_stars = self.find_multiple_systems(query_filters=multiple_filters, rebuild=rebuild)
         total_systems = single_stars + multiple_stars
 
         if not self._use_entities and match_to_wikidata_entities:
-            logger.warning("No Wikidata entities file found. Download it from the github and place it in your entities/ folder.")
+            logger.warning("No Wikidata entities file found. Download it from the github repo and place it in your entities/ folder.")
         elif match_to_wikidata_entities:
             self.__match_systems_to_entities(total_systems)
-        
+
         logger.info("Catalogue creation complete")
         galaxy = Galaxy(total_systems)
         if save:

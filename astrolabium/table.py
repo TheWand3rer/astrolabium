@@ -9,7 +9,7 @@ def join(table1: list, table2: list, key1: str, key2: str | None = None) -> list
 
     table_lookup = {str(entry[key2]): entry for entry in table2 if key2 in entry}
     result = []
-    for entry in tqdm(table1, colour="GREEN"):
+    for entry in tqdm(table1, colour="GREEN", desc="Joining tables"):
         if isinstance(entry, EntryBase):
             entry = entry.to_dict()
         value = str(entry[key1])
