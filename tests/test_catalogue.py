@@ -1,11 +1,24 @@
 import unittest
 import astropy.units as u
+import os.path
+from astrolabium import config
+from astrolabium.creator import CatalogueCreator
 from astrolabium.catalogues import Hipparcos, WDS, Orb6
 
 
 class TestCatalogues(unittest.TestCase):
     HIP_Rigel_Kentaurus = "71683"
     WDS_AlphaCentauri = "14396-6050"
+
+    def test_download_catalogues(self):
+        CatalogueCreator.download_and_parse_catalogues()
+        self.assertTrue(os.path.exists(f"{config.path_cataloguedir}/hipparcos_2007.dat"))
+        self.assertTrue(os.path.exists(f"{config.path_cataloguedir}/wds.txt"))
+        self.assertTrue(os.path.exists(f"{config.path_cataloguedir}/orb6orbits.txt"))
+        self.assertTrue(os.path.exists(f"{config.path_datadir}/hipparcos2007.json"))
+        self.assertTrue(os.path.exists(f"{config.path_datadir}/wds.json"))
+        self.assertTrue(os.path.exists(f"{config.path_datadir}/orb6orbits.json"))
+        self.assertTrue(os.path.exists(f"{config.path_datadir}/crossref_table.json"))
 
     def test_hipparcos_select(self):
         hipparcos = Hipparcos()

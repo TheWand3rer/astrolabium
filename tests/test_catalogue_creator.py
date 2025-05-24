@@ -7,13 +7,13 @@ class TestCatalogueCreator(unittest.TestCase):
     def test_find_star_systems(self):
         creator = CatalogueCreator()
 
-        stars = creator.find_star_systems(rebuild=False)
+        stars = creator.find_star_systems(rebuild=True)
         self.assertEqual(len(stars), 119)
 
     def test_find_multiple_systems(self):
         creator = CatalogueCreator()
 
-        systems = creator.find_multiple_systems(rebuild=False)
+        systems = creator.find_multiple_systems(rebuild=True)
 
         galaxy = Galaxy(systems)
         self.assertIsNotNone(systems)
@@ -33,10 +33,11 @@ class TestCatalogueCreator(unittest.TestCase):
         stars = creator.get_stars_from_IAU()
         self.assertEqual(len(stars), 1)
 
-    def test_create_galaxy(self):
+    def test_create(self):
         creator = CatalogueCreator()
-        galaxy = creator.create_galaxy()
+        galaxy = creator.create()
         self.assertEqual(galaxy.count, 194)
 
         a_cen = galaxy.select("Alpha Centauri")
-        self.assertAlmostEqual(a_cen.primary.m, 1.100 * u.M_sun)
+        self.assertIsNotNone(a_cen)
+        self.assertEqual(a_cen.orbiters_catalogue_ids, ["HIP 71683", "HIP 70890", "HIP 71681"])
