@@ -68,9 +68,9 @@ CatalogueCreator.download_and_parse_catalogues()
 
 # This will select all single and multiple star systems within 100 light years
 cat = CatalogueCreator(lyr=100)
-cat.create_galaxy()
+cat.create()
 ```
-You will then find a file named `catalogue_100_ly.json` in the `out/` folder. With the default settings it will select all single and multiple star systems within a distance of 100 light years that have either a Bayer or Flamsteed designation (so _Alpha Centauri_ and _61 Cygni_ will be included but not _HIP 12345_).
+You will then find a file named `catalogue_100_ly.json` in the `out/` folder. With the default settings it will select all single and multiple star systems within a distance of 100 light years that have either a Bayer or Flamsteed designation (so _Alpha Centauri_ and _61 Cygni_ will be included but not _HIP 12345_). You can pass an array of filters to `create()` to choose which systems should be included for each of the _single_ and _multiple_ star systems sets.
 
 ## Detailed Description
 `astrolabium` works by combining different catalogues together. Currently, the starting point is the [Hipparcos 2](https://cdsarc.u-strasbg.fr/viz-bin/cat/I/311) catalogue. It works as follows: 
@@ -103,7 +103,7 @@ You can download one or both and then copy them to your own `entities/` folder. 
 * Include support for updating the catalogue data with the Gaia DR3 dataset, which may contain more up-to-date and accurate measurements of parallaxes and other data.
 * Include support for parsing the [NASA JPL Horizons](https://ssd.jpl.nasa.gov/horizons/app.html) data for Solar System objects.
 * Include support for the Open Exoplanet Database.
-* Include support for the Tycho catalogue
+* Include support for the Tycho catalogue.
 
 ## See also
 * [Universe](https://github.com/TheWand3rer/Universe), a Unity library for astrodynamics calculations (porting code from poliastro)
