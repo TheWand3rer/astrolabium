@@ -289,5 +289,5 @@ class WDSAnalyser:
         Reconstructs the hierarchy of the given WDS id entries using information from ORB6.
         "14396-6050" corresponds to the entries for the Alpha Centauri AB(C) system
         """
-        wds_entries = self.__wds.select_entries([wds_id])
-        return self.__detect_hierarchy(wds_id, wds_entries)
+        wds_entries = self.__wds.select_entries_grouped(wds_ids=[wds_id])
+        return self.__detect_hierarchy(wds_id, wds_entries[wds_id])

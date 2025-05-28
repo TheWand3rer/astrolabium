@@ -112,7 +112,7 @@ class CatalogueCreator:
         systems = self._analyser.analyse()
         return systems
 
-    def __match_systems_to_entities(self, systems: list[System], save=True):
+    def match_systems_to_entities(self, systems: list[System], save=True):
         entities_path = f"{config.path_temp}/catalogue_{self.lyr}_ly_entities"
         wiki_entities = io.read_dict_json(entities_path)
 
@@ -166,11 +166,11 @@ class CatalogueCreator:
         data = gaia.retrieve_data(source_ids)
         gaia.update_data(stars_dr3, data)
 
-    def query_multiple_system(self, wds_id: str):
+    def query_multiple_system(self, wds_id: str) -> System | None:
         if self._analyser is None:
             raise ValueError("Please run <find_multiple_systems()> first.")
 
-        self._analyser.query_system(wds_id)
+        return self._analyser.query_system(wds_id)
 
     def create(self, single_filters=list[Callable] | None, multiple_filters=list[Callable] | None, rebuild=False, match_to_wikidata_entities=True, save=True):
         single_stars = self.find_star_systems(query_filters=single_filters, rebuild=rebuild)
@@ -180,7 +180,7 @@ class CatalogueCreator:
         if not self._use_entities and match_to_wikidata_entities:
             logger.warning("No Wikidata entities file found. Download it from the github repo and place it in your entities/ folder.")
         elif match_to_wikidata_entities:
-            self.__match_systems_to_entities(total_systems)
+            self.match_systems_to_entities(total_systems)
 
         logger.info("Catalogue creation complete")
         galaxy = Galaxy(total_systems)
