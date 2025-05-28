@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class CatalogueCreator:
+    __version__ = "0.1.2"
+
     def __init__(
         self,
         lyr=100,
@@ -28,7 +30,7 @@ class CatalogueCreator:
         self._analyser: WDSAnalyser = None
         logging.root.setLevel(logging.INFO)
         logging.basicConfig(format="%(message)s")
-        logger.info("Astrolabium v0.1.0 by Vindemiatrix Collective (https://vindemiatrixcollective.com)\n")
+        logger.info(f"Astrolabium v{self.__version__} by Vindemiatrix Collective (https://vindemiatrixcollective.com)\n")
         io.create_directory(config.path_entitiesdir)
         io.create_directory(config.path_datadir)
         io.create_directory(config.path_temp)
