@@ -123,16 +123,19 @@ class WDSAnalyser:
                         node = nodes[0]
                         if node.parent.name != node1.parent.name:  # use other node parent
                             node.parent = None
-                    else:
-                        if len(nodes) == 2:
-                            depth1 = nodes[0].depth
-                            depth2 = nodes[1].depth
-                            if depth1 > depth2:
-                                nodes[1].parent = None  # keep node with the most depth
-                            else:
-                                nodes[0].parent = None  # keep node with the most depth
+                    elif len(nodes) == 2:
+                        node0parent = nodes[0].parent.name
+                        node1parent = nodes[1].parent.name
+                        if node0parent < node1parent:
+                            nodes[1].parent = None
                         else:
-                            raise ValueError("Unexpected branch")
+                           nodes[0].parent = None
+                        # if depth1 > depth2:
+                        #     nodes[1].parent = None  # keep node with the most depth
+                        # else:
+                        #     nodes[0].parent = None  # keep node with the most depth
+                    else:
+                        raise ValueError("Unexpected branch")
             else:
                 if len(sub) == 1:
                     component = sub[0] if sub[0] != "" else "A"
@@ -152,6 +155,12 @@ class WDSAnalyser:
         stars_catalog = self.__find_catalogue_entries(system_crossref)
 
         if "A" not in stars_catalog:
+            star = stars_catalog["AB"]
+            if star is not None:
+                del stars_catalog["AB"]
+                stars_catalog["A"] = star
+            else:
+                logger.warning(f"System {wds_id} has no primary!")
             return None
 
         if stars_catalog is not None:
@@ -290,4 +299,7 @@ class WDSAnalyser:
         "14396-6050" corresponds to the entries for the Alpha Centauri AB(C) system
         """
         wds_entries = self.__wds.select_entries_grouped(wds_ids=[wds_id])
-        return self.__detect_hierarchy(wds_id, wds_entries[wds_id])
+        system = self.__detect_hierarchy(wds_id, wds_entries[wds_id])
+        if (system is None):
+            logger.warning(f"System {wds_id} is invalid")
+        return system
