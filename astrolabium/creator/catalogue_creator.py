@@ -99,7 +99,7 @@ class CatalogueCreator:
                 query_filters = [
                     lambda star: filters.distance(star, self.lyr),
                     lambda star: filters.any_catalogues(star, ["WDS"]),
-                    lambda star: filters.any_catalogues(star, ["b", "fl", "Name"]),
+                    lambda star: filters.any_catalogues(star, ["HIP", "b", "fl", "Name"]),
                     lambda star: filters.wds_is_physical(star, wds),
                 ]
 
@@ -110,7 +110,6 @@ class CatalogueCreator:
             raise ValueError("No multiple stars found: are the filters too stringent?")
         logger.info("Analysing multiple star systems")
         self._analyser = WDSAnalyser(crossref_data=mult_systems, verbose=self.verbose)
-
         systems = self._analyser.analyse()
         return systems
 
