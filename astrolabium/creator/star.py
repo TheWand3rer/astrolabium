@@ -20,9 +20,12 @@ class Star(EntryBase):
         ["i", [], lambda v: float(v), u.deg, 3],
         ["lan", [], lambda v: float(v), u.deg, 3],
         ["argp", [], lambda v: float(v), u.deg, 3],
+        ["otypes", [], None, None, None]
     ]
 
-    def __init__(self, catalogue_entry: EntryBase | None = None, orbit: Orb6Entry | None = None, crossref: Any | None = None, distance: u.Quantity|None = None):
+    def __init__(
+        self, catalogue_entry: EntryBase | None = None, orbit: Orb6Entry | None = None, crossref: Any | None = None, distance: u.Quantity | None = None
+    ):
         self.id: str | None = None
         self.Name: str | None = None
         self.a: u.Quantity | None = None
@@ -46,6 +49,7 @@ class Star(EntryBase):
 
         if crossref is not None:
             data = data | crossref
+            data["otypes"] = crossref["otypes"]
             if "st" in crossref and crossref["st"] != "":
                 data["sc"] = crossref["st"]
             if catalogue_entry is None and "Name" in crossref:
@@ -66,6 +70,12 @@ class Star(EntryBase):
         json = {}
         json["Id"] = self.extract_value("id", None, None)
         json["Name"] = self.extract_value("Name", None, None)
+        if hasattr(self,"otypes"):
+            otypes = self.extract_value("otypes", None, None)
+            otypes = ", ".join(otypes)
+        else:
+            otypes = "*"
+        json["Attributes"] = {"otypes": otypes }
         json["SC"] = self.extract_value("sc", None, None)
 
         physicalData = {
@@ -75,7 +85,7 @@ class Star(EntryBase):
             "g": self.extract_value("g", 6, u.Unit("cm/s**2")),
             "age": self.extract_value("age", 6, u.Gyr),
         }
-        json["PhysicalData"] = {k: v for k, v in physicalData.items() if v}
+        json["PhysicalData"] = {k: v for k, v in physicalData.items() if v is not None}
 
         orbitalData = {
             "a": self.extract_value("a", 6, u.AU),
@@ -85,7 +95,7 @@ class Star(EntryBase):
             "lan": self.extract_value("lan", 3, u.deg),
             "argp": self.extract_value("argp", 3, u.deg),
         }
-        json["OrbitalData"] = {k: v for k, v in orbitalData.items() if v}
+        json["OrbitalData"] = {k: v for k, v in orbitalData.items() if v is not None}
 
         orbiters = {}
         for key, star in self.Orbiters.items():
