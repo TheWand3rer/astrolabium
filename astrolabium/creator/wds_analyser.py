@@ -196,7 +196,7 @@ class WDSAnalyser:
                 orbiter_crossref = next(x for x in crossref if x["HIP"] == orbiter_entry.HIP)
                 orbiter = Star(orbiter_entry, orbiter_orbit, orbiter_crossref)
             else:
-                orbiter = Star(stars["A"], orbiter_orbit, orbiter_crossref)
+                orbiter = Star(None, orbiter_orbit, orbiter_crossref, primary.d)
 
             if orbiter.Name is None:
                 orbiter.Name = node.name

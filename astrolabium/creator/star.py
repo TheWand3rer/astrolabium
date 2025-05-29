@@ -22,7 +22,7 @@ class Star(EntryBase):
         ["argp", [], lambda v: float(v), u.deg, 3],
     ]
 
-    def __init__(self, catalogue_entry: EntryBase | None = None, orbit: Orb6Entry | None = None, crossref: Any | None = None):
+    def __init__(self, catalogue_entry: EntryBase | None = None, orbit: Orb6Entry | None = None, crossref: Any | None = None, distance: u.Quantity|None = None):
         self.id: str | None = None
         self.Name: str | None = None
         self.a: u.Quantity | None = None
@@ -33,7 +33,13 @@ class Star(EntryBase):
         data = {}
         if orbit is not None and isinstance(orbit, Orb6Entry):
             data = orbit.to_dict()
-            data["a"] = orbit.calculate_sma_AU(catalogue_entry.d)
+            d = None
+            if distance is not None:
+                d = distance
+            elif catalogue_entry is not None:
+                d = catalogue_entry.d
+
+            data["a"] = orbit.calculate_sma_AU(d)
             # assuming lpa (Longitude of the Periastron ϖ) refers to the argument of the periastron instead (ω)
             data["argp"] = data["lpa"]
             del data["lpa"]
