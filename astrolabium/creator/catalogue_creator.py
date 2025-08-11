@@ -35,7 +35,7 @@ class CatalogueCreator:
         io.create_directory(config.path_datadir)
         io.create_directory(config.path_temp)
         io.create_directory(config.path_outdir)
-        if not io.file_exists(entities_path):
+        if not io.file_exists(entities_path+".json"):
             self._use_entities = False
         pass
 
@@ -60,7 +60,7 @@ class CatalogueCreator:
             if not query_filters:
                 query_filters = [
                     lambda star: filters.distance(star, self.lyr),
-                    lambda star: filters.any_catalogues(star, ["b", "fl", "Name"]),
+                    lambda star: filters.any_catalogues(star, ["HIP", "b", "fl", "Name"]),
                 ]
 
             crossref = Crossref()
@@ -113,7 +113,7 @@ class CatalogueCreator:
         systems = self._analyser.analyse()
         return systems
 
-    def match_systems_to_entities(self, systems: list[System], save=True):
+    def match_systems_to_entities(self, systems: list[System], save=True, rebuild=False):
         entities_path = f"{config.path_temp}/catalogue_{self.lyr}_ly_entities"
         wiki_entities = io.read_dict_json(entities_path)
 
@@ -121,7 +121,7 @@ class CatalogueCreator:
         for system in systems:
             catalogue_ids += system.orbiters_catalogue_ids
 
-        if not wiki_entities:
+        if not wiki_entities or rebuild:
             wiki_entities = io.read_dict_json(self.entities_path)
             if not wiki_entities:
                 logger.warning("WARNING: Wikidata entity file not available, retrieving from wikidata")
@@ -173,7 +173,7 @@ class CatalogueCreator:
 
         return self._analyser.query_system(wds_id)
 
-    def create(self, single_filters=list[Callable] | None, multiple_filters=list[Callable] | None, rebuild=False, match_to_wikidata_entities=True, save=True):
+    def create(self, single_filters:list[Callable] | None = None, multiple_filters:list[Callable] | None = None, rebuild=False, match_to_wikidata_entities=True, save=True, post_filters: list[Callable] | None = None):
         single_stars = self.find_star_systems(query_filters=single_filters, rebuild=rebuild)
         multiple_stars = self.find_multiple_systems(query_filters=multiple_filters, rebuild=rebuild)
         total_systems = single_stars + multiple_stars
@@ -181,10 +181,17 @@ class CatalogueCreator:
         if not self._use_entities and match_to_wikidata_entities:
             logger.warning("No Wikidata entities file found. Download it from the github repo and place it in your entities/ folder.")
         elif match_to_wikidata_entities:
-            self.match_systems_to_entities(total_systems)
+            self.match_systems_to_entities(total_systems, rebuild=rebuild)
+
+        if post_filters is None:
+            post_filters = [lambda s: not s.Name.startswith("HIP") ]
+
+        for filter in post_filters:
+            total_systems = [system for system in total_systems if filter(system)]
+            
+        galaxy = Galaxy(total_systems)
 
         logger.info("Catalogue creation complete")
-        galaxy = Galaxy(total_systems)
         if save:
             galaxy.save(self.output_catalogue_path)
             logger.info(f"Saved to {self.output_catalogue_path}")

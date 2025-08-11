@@ -129,11 +129,7 @@ class WDSAnalyser:
                         if node0parent < node1parent:
                             nodes[1].parent = None
                         else:
-                           nodes[0].parent = None
-                        # if depth1 > depth2:
-                        #     nodes[1].parent = None  # keep node with the most depth
-                        # else:
-                        #     nodes[0].parent = None  # keep node with the most depth
+                            nodes[0].parent = None
                     else:
                         raise ValueError("Unexpected branch")
             else:
@@ -154,19 +150,22 @@ class WDSAnalyser:
         companion_orbits = self.__find_orbits(root, self.__orb6.select_entries(wds_id))
         stars_catalog = self.__find_catalogue_entries(system_crossref)
 
-        if "A" not in stars_catalog:
+        if "A" not in stars_catalog and "AB" in stars_catalog and stars_catalog["AB"] is not None:
             star = stars_catalog["AB"]
-            if star is not None:
-                del stars_catalog["AB"]
-                stars_catalog["A"] = star
-            else:
-                logger.warning(f"System {wds_id} has no primary!")
-            return None
+            del stars_catalog["AB"]
+            stars_catalog["A"] = star
+            
+        if "Aa" in stars_catalog:
+            raise ValueError("Oh no!" + stars_catalog.keys())
 
         if stars_catalog is not None:
             for component in stars:
                 if component not in stars_catalog:
                     stars_catalog[component] = None
+
+        if "A" not in stars_catalog or stars_catalog["A"] is None:
+            logger.warning(f"System {wds_id} has no primary!")
+            return None
 
         if self.verbose:
             self.print_system_tree(root)
@@ -182,7 +181,8 @@ class WDSAnalyser:
         spectral_types=dict[str, str],
     ) -> System:
         primary = stars["A"]
-        assert primary is not None, "primary"
+        if primary is None:
+            raise KeyError(f"primary {stars.keys()}")
 
         crossref_entry = self.crossref.query_catalogue_code(primary.id)
         system = System(Text.classic_system_name(crossref_entry))
@@ -300,6 +300,6 @@ class WDSAnalyser:
         """
         wds_entries = self.__wds.select_entries_grouped(wds_ids=[wds_id])
         system = self.__detect_hierarchy(wds_id, wds_entries[wds_id])
-        if (system is None):
+        if system is None:
             logger.warning(f"System {wds_id} is invalid")
         return system
