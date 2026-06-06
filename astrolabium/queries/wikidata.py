@@ -1,5 +1,6 @@
 import requests
 import time
+from importlib.metadata import version
 from SPARQLWrapper import SPARQLWrapper, JSON
 from tqdm import tqdm, trange
 from typing import Any
@@ -7,6 +8,14 @@ from astrolabium.parsers.data import WikidataStar
 import logging
 
 logger = logging.getLogger(__name__)
+
+__user_agent: str = f"astrolabium/{version('astrolabium')}"
+
+
+def set_user_agent(user_agent: str) -> None:
+    """Override the User-Agent header used for all Wikidata HTTP requests."""
+    global __user_agent
+    __user_agent = user_agent
 
 class Wikidata:
     prop_Parts = "P527"
@@ -247,7 +256,8 @@ class Wikidata:
     @staticmethod
     def get_entity(qid) -> dict:
         url = f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
-        r = requests.get(url)
+        headers = {"User-Agent": __user_agent}
+        r = requests.get(url, headers=headers)
         data = r.json()
         entity = data["entities"][qid]
         return entity
@@ -257,7 +267,8 @@ class Wikidata:
         assert len(qids) <= 50, "size > 50"
         batch = "|".join(qids)
         url = f"https://www.wikidata.org/w/api.php?action=wbgetentities&ids={batch}&format=json"
-        response = requests.get(url)
+        headers = {"User-Agent": __user_agent}
+        response = requests.get(url, headers=headers)
         data = response.json()
         return data["entities"]
 
@@ -302,7 +313,8 @@ class Wikidata:
             "language": "en",
             "format": "json",
         }
-        r = requests.get(url, params=params)
+        headers = {"User-Agent": __user_agent}
+        r = requests.get(url, params=params, headers=headers)
         data = r.json()
         if data.get("search"):
             return data["search"]  # Return top result's Qid
@@ -371,7 +383,8 @@ class Wikidata:
     def get_unit_symbol(qid, lang="en"):
         url = f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
         try:
-            r = requests.get(url)
+            headers = {"User-Agent": __user_agent}
+            r = requests.get(url, headers=headers)
             data = r.json()
             claims = data["entities"][qid]["claims"]
             symbols = claims.get("P5061", [])
