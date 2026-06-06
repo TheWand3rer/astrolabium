@@ -1,9 +1,13 @@
+import json
+import os
 import requests
 import time
 from importlib.metadata import version
 from SPARQLWrapper import SPARQLWrapper, JSON
 from tqdm import tqdm, trange
 from typing import Any
+import astrolabium.config as config
+from astrolabium import fileIO as io
 from astrolabium.parsers.data import WikidataStar
 import logging
 
@@ -363,12 +367,24 @@ class Wikidata:
             raise e
 
     @staticmethod
-    def get_qids_from_catalogue_entries(catalogue_qid: str, catalogue_label: str, catalogue_ids: list):
+    def get_qids_from_catalogue_entries(catalogue_qid: str, catalogue_label: str, catalogue_ids: list, catalogue_name: str | None = None):
         """
         :param catalogue_id: the Qid of the catalogue type from wikidata. For example, "Q537199" for the Hipparcos catalogue
         :param catalogue_label: The prefix label for the catalogue, for example "HIP" for Hipparcos or "Gaia DR3"
         :catalogue_ids: a list of catalogue ids without the label
+        :catalogue_name: Human-readable catalogue name used for the cache filename. Defaults to catalogue_label.
         """
+        name = catalogue_name or catalogue_label.lower()
+        cache_path = f"{config.path_datadir}/{name}_{catalogue_qid}_qids"
+        if os.path.isfile(f"{cache_path}.json"):
+            logger.info(f"Loading {catalogue_label} qids from cache: {cache_path}")
+            cache = io.read_list_json(cache_path)
+            cache_map = {entry["id"]: entry for entry in cache}
+            results = [cache_map[f"{catalogue_label} {cid}"] for cid in catalogue_ids if f"{catalogue_label} {cid}" in cache_map]
+            logger.info(f"  Found {len(results)} / {len(catalogue_ids)} entries in cache")
+            return results
+
+        logger.info(f"No cache for {catalogue_label}, querying Wikidata SPARQL")
         id_list = " ".join(f'"{catalogue_label} {id}"' for id in catalogue_ids)
         query = f"""
         SELECT ?qid ?qidLabel ?id WHERE {{
@@ -383,6 +399,11 @@ class Wikidata:
         for result in results:
             if result["qidLabel"] == result["qid"]:
                 del result["qidLabel"]
+
+        if results:
+            io.write_list_json(results, cache_path)
+            logger.info(f"  Saved {len(results)} entries to cache: {cache_path}")
+
         return results
 
     @staticmethod
