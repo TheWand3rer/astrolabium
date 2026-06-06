@@ -281,7 +281,10 @@ class Wikidata:
         try:
             for i in trange(0, n, batch_size, colour="GREEN", desc="Wikidata"):
                 batch = qids[i : i + batch_size]
-                tqdm.write(f"Requesting entities {i} to {min(i + batch_size, n)} from Wikidata")
+                try:
+                    tqdm.write(f"Requesting entities {i} to {min(i + batch_size, n)} from Wikidata")
+                except UnicodeEncodeError:
+                    logger.warning(f"Requesting entities {i} to {min(i + batch_size, n)} from Wikidata")
                 iau_entities = Wikidata.get_entities(batch)
                 for qid, entity in iau_entities.items():
                     if parse_properties:
@@ -295,7 +298,10 @@ class Wikidata:
                         label = entity.get("labels", {}).get("en", {}).get("value")
                         entries[qid] = label
 
-                    tqdm.write(f"   > Parsing qid:{qid} [{label}]")
+                    try:
+                        tqdm.write(f"   > Parsing qid:{qid} [{label}]")
+                    except UnicodeEncodeError:
+                        logger.warning(f"   > Parsing qid:{qid} [{label}]")
                 time.sleep(0.250)
         except KeyboardInterrupt:
             pass
