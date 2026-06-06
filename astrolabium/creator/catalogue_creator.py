@@ -4,6 +4,7 @@ from astrolabium.parsers.data import WikidataStar, Text
 from astrolabium.catalogues import Hipparcos, WDS, Crossref, filters
 from astrolabium.queries import WikiEntities, gaia
 from astrolabium.creator import WDSAnalyser, Star, System, Galaxy
+import datetime
 import logging
 from typing import Callable
 
@@ -189,7 +190,12 @@ class CatalogueCreator:
         for filter in post_filters:
             total_systems = [system for system in total_systems if filter(system)]
             
-        galaxy = Galaxy(total_systems)
+        galaxy = Galaxy(
+            total_systems,
+            lyr=self.lyr,
+            version=self.__version__,
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        )
 
         logger.info("Catalogue creation complete")
         if save:
