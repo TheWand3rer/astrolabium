@@ -67,6 +67,28 @@ class HipparcosEntry(EntryBase):
         self.de = coord_2000.dec
         self.__epoch = "J2000"
 
+    def to_star_dict(self) -> dict:
+        """Return a dict with fields matching Star.key_settings.
+
+        Only includes fields that Star actually uses: id, Name, ra, dec, d.
+        """
+        return {
+            "id": getattr(self, "id", None),
+            "Name": f"HIP {self.HIP}" if getattr(self, "HIP", None) else None,
+            "ra": getattr(self, "ra", None),
+            "dec": getattr(self, "de", None),
+            "d": getattr(self, "d", None),
+        }
+
+    def to_star(self) -> "Star":
+        """Create a Star object from this HipparcosEntry.
+
+        Returns:
+            Star instance with id, ra, dec, d populated from this entry.
+        """
+        from astrolabium.creator import Star
+        return Star(catalogue_entry=self.to_star_dict())
+
     def to_string(self):
         coord = ICRS(self.ra.to(u.deg), self.de.to(u.deg))
         return f"""

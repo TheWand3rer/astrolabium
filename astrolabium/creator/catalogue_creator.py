@@ -2,8 +2,9 @@ from astrolabium import fileIO as io, config
 from astrolabium.parsers import HipparcosParser, WDSParser, Orb6Parser
 from astrolabium.parsers.data import WikidataStar, Text
 from astrolabium.catalogues import Hipparcos, WDS, Crossref, filters
-from astrolabium.queries import WikiEntities, gaia
+from astrolabium.queries import WikiEntities, gaia, wikimedia
 from astrolabium.creator import WDSAnalyser, Star, System, Galaxy
+import datetime
 import logging
 from typing import Callable
 
@@ -11,12 +12,15 @@ logger = logging.getLogger(__name__)
 
 
 class CatalogueCreator:
+    __version__ = "0.1.2"
+
     def __init__(
         self,
         lyr=100,
         catalogue_path=f"{config.path_datadir}/hipparcos2007",
         entities_path=f"{config.path_entitiesdir}/hipparcos2007_entities",
         verbose=False,
+        use_wikimedia_fallback=False,
     ):
         self.verbose = verbose
         self.lyr = lyr
@@ -25,15 +29,17 @@ class CatalogueCreator:
         self.iau_entities_path = f"{config.path_entitiesdir}/IAU_entities"
         self.output_catalogue_path = f"{config.path_outdir}/catalogue_{self.lyr}_ly"
         self._use_entities = True
+        self._use_wikimedia_fallback = use_wikimedia_fallback
+        self._wikimedia_client = None
         self._analyser: WDSAnalyser = None
         logging.root.setLevel(logging.INFO)
         logging.basicConfig(format="%(message)s")
-        logger.info("Astrolabium v0.1.0 by Vindemiatrix Collective (https://vindemiatrixcollective.com)\n")
+        logger.info(f"Astrolabium v{self.__version__} by Vindemiatrix Collective (https://vindemiatrixcollective.com)\n")
         io.create_directory(config.path_entitiesdir)
         io.create_directory(config.path_datadir)
         io.create_directory(config.path_temp)
         io.create_directory(config.path_outdir)
-        if not io.file_exists(entities_path):
+        if not io.file_exists(entities_path+".json"):
             self._use_entities = False
         pass
 
@@ -58,7 +64,7 @@ class CatalogueCreator:
             if not query_filters:
                 query_filters = [
                     lambda star: filters.distance(star, self.lyr),
-                    lambda star: filters.any_catalogues(star, ["b", "fl", "Name"]),
+                    lambda star: filters.any_catalogues(star, ["HIP", "b", "fl", "Name"]),
                 ]
 
             crossref = Crossref()
@@ -74,7 +80,17 @@ class CatalogueCreator:
         for entry in systems_within_distance:
             if "WDS" in entry:
                 continue
-            star = Star(catalogue_entry=entry, crossref=entry)
+            # entry is a dict (merged HipparcosEntry.to_dict() + crossref).
+            # Build Star-compatible dict from the Hipparcos fields, then let
+            # Star merge crossref fields (otypes, sc, etc.).
+            star_data = {
+                "id": f"HIP {entry['HIP']}" if entry.get("HIP") else None,
+                "Name": f"HIP {entry['HIP']}" if entry.get("HIP") else None,
+                "ra": entry.get("ra"),
+                "dec": entry.get("de"),
+                "d": entry.get("d"),
+            }
+            star = Star(catalogue_entry=star_data, crossref=entry)
             name = Text.classic_system_name(entry)
             systems.append(System(name, star))
 
@@ -97,7 +113,7 @@ class CatalogueCreator:
                 query_filters = [
                     lambda star: filters.distance(star, self.lyr),
                     lambda star: filters.any_catalogues(star, ["WDS"]),
-                    lambda star: filters.any_catalogues(star, ["b", "fl", "Name"]),
+                    lambda star: filters.any_catalogues(star, ["HIP", "b", "fl", "Name"]),
                     lambda star: filters.wds_is_physical(star, wds),
                 ]
 
@@ -108,11 +124,10 @@ class CatalogueCreator:
             raise ValueError("No multiple stars found: are the filters too stringent?")
         logger.info("Analysing multiple star systems")
         self._analyser = WDSAnalyser(crossref_data=mult_systems, verbose=self.verbose)
-
         systems = self._analyser.analyse()
         return systems
 
-    def __match_systems_to_entities(self, systems: list[System], save=True):
+    def match_systems_to_entities(self, systems: list[System], save=True, rebuild=False):
         entities_path = f"{config.path_temp}/catalogue_{self.lyr}_ly_entities"
         wiki_entities = io.read_dict_json(entities_path)
 
@@ -120,7 +135,7 @@ class CatalogueCreator:
         for system in systems:
             catalogue_ids += system.orbiters_catalogue_ids
 
-        if not wiki_entities:
+        if not wiki_entities or rebuild:
             wiki_entities = io.read_dict_json(self.entities_path)
             if not wiki_entities:
                 logger.warning("WARNING: Wikidata entity file not available, retrieving from wikidata")
@@ -141,6 +156,43 @@ class CatalogueCreator:
                 entity = wikiCatalog.query(star.id)
                 if entity is not None:
                     star.add_properties(entity)
+                    self.__apply_wikimedia_fallback(star, entity)
+
+    def __apply_wikimedia_fallback(self, star: Star, entity: WikidataStar) -> None:
+        """Fill missing physical data fields from Wikimedia infobox.
+
+        Only runs when ``use_wikimedia_fallback=True``. Initializes the
+        Wikimedia client lazily on first call.
+        """
+        if not self._use_wikimedia_fallback:
+            return
+
+        if self._wikimedia_client is None:
+            try:
+                self._wikimedia_client = wikimedia.WikimediaClient()
+                self._wikimedia_client.authenticate()
+                logger.info("> Wikimedia fallback client initialized")
+            except ValueError:
+                logger.warning(
+                    "Wikimedia fallback enabled but credentials not found. "
+                    "Set WIKIMEDIA_USERNAME and WIKIMEDIA_PASSWORD in .env"
+                )
+                self._wikimedia_client = None  # Prevent repeated attempts
+
+        if self._wikimedia_client is None or not self._wikimedia_client.is_authenticated():
+            return
+
+        qid = getattr(entity, "qid", None)
+        if not qid:
+            return
+
+        wm_data = self._wikimedia_client.fetch_parsed_by_qid(qid)
+        if wm_data:
+            set_fields = star.add_wikimedia_properties(wm_data)
+            if set_fields:
+                logger.info(
+                    f"  {star.id}: filled missing fields via Wikimedia: {', '.join(set_fields)}"
+                )
 
     def update_names_from_IAU(self, table, namekey="Name"):
         # TODO: ensure IAU names overwrite names we might get from other sources
@@ -166,13 +218,13 @@ class CatalogueCreator:
         data = gaia.retrieve_data(source_ids)
         gaia.update_data(stars_dr3, data)
 
-    def query_multiple_system(self, wds_id: str):
+    def query_multiple_system(self, wds_id: str) -> System | None:
         if self._analyser is None:
             raise ValueError("Please run <find_multiple_systems()> first.")
 
-        self._analyser.query_system(wds_id)
+        return self._analyser.query_system(wds_id)
 
-    def create(self, single_filters=list[Callable] | None, multiple_filters=list[Callable] | None, rebuild=False, match_to_wikidata_entities=True, save=True):
+    def create(self, single_filters:list[Callable] | None = None, multiple_filters:list[Callable] | None = None, rebuild=False, match_to_wikidata_entities=True, save=True, post_filters: list[Callable] | None = None):
         single_stars = self.find_star_systems(query_filters=single_filters, rebuild=rebuild)
         multiple_stars = self.find_multiple_systems(query_filters=multiple_filters, rebuild=rebuild)
         total_systems = single_stars + multiple_stars
@@ -180,10 +232,22 @@ class CatalogueCreator:
         if not self._use_entities and match_to_wikidata_entities:
             logger.warning("No Wikidata entities file found. Download it from the github repo and place it in your entities/ folder.")
         elif match_to_wikidata_entities:
-            self.__match_systems_to_entities(total_systems)
+            self.match_systems_to_entities(total_systems, rebuild=rebuild)
+
+        if post_filters is None:
+            post_filters = [lambda s: not s.Name.startswith("HIP") ]
+
+        for filter in post_filters:
+            total_systems = [system for system in total_systems if filter(system)]
+            
+        galaxy = Galaxy(
+            total_systems,
+            lyr=self.lyr,
+            version=self.__version__,
+            timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        )
 
         logger.info("Catalogue creation complete")
-        galaxy = Galaxy(total_systems)
         if save:
             galaxy.save(self.output_catalogue_path)
             logger.info(f"Saved to {self.output_catalogue_path}")

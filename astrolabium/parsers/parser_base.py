@@ -1,3 +1,4 @@
+import gzip
 import requests
 from pathlib import Path
 from tqdm import tqdm
@@ -36,6 +37,7 @@ class ParserBase:
         self.__concise_columns: list[str] = []
         self.out_filename = out_filename
         self.compressed = compressed
+        self.__compressed = False
         self.use_separator = use_separator
 
     @classmethod
@@ -48,9 +50,29 @@ class ParserBase:
     def pre_copy(cls, s: str) -> str:
         return s
 
+    def __open(self, compressed: bool = False) -> typing.IO[str]:
+        """Open the catalogue file, decompressing if needed.
+
+        Args:
+            compressed: If True, opens as gzip; otherwise plain text.
+
+        Returns:
+            Open file handle.
+        """
+        mode = "rt" if compressed else "r"
+        if compressed:
+            return gzip.open(self.catalogue_local, mode, encoding="utf8")
+        return open(self.catalogue_local, mode, encoding="utf8")
+
+    def __close(self, fh: typing.IO[str]) -> None:
+        """Close a file handle opened by __open()."""
+        fh.close()
+
     def download(self):
         logger.info(f"Downloading {self.catalogue_title} from {self.catalogue_url}")
-        headers = {"User-Agent": "Mozilla/5.0 (platform; rv:gecko-version) Gecko/gecko-trail Firefox/firefox-version"}
+        import os
+        user_agent = os.getenv("WIKIDATA_USER_AGENT", "astrolabium")
+        headers = {"User-Agent": user_agent}
 
         response = requests.get(self.catalogue_url, stream=True, headers=headers, verify=False)
         with open(self.catalogue_local, "wb") as file:
@@ -64,13 +86,14 @@ class ParserBase:
         total_lines = self.end_line - self.start_line + 1
 
         catalogue_stars = []
-        with open(self.catalogue_local, "r", encoding="utf8") as f:
+        fh = self.__open(self.__compressed)
+        try:
             for i in range(self.start_line - 1):
-                next(f)
+                next(fh)
 
             count = 0
             line_idx = 0
-            for line in tqdm(f, desc=f"Parsing {self.catalogue_label}", total=total_lines, colour="GREEN"):
+            for line in tqdm(fh, desc=f"Parsing {self.catalogue_label}", total=total_lines, colour="GREEN"):
                 line_idx += 1
                 if n > 0 and count == n or line_idx == total_lines:
                     break
@@ -80,6 +103,8 @@ class ParserBase:
                     count += 1
                 else:
                     tqdm.write(f"discarding {list(star.items())[0]}")
+        finally:
+            self.__close(fh)
         return catalogue_stars
 
     def _validate_columns(self):
@@ -117,11 +142,17 @@ class ParserBase:
             if self.__concise and key not in self.__concise_columns:
                 continue
             field = line[interval[0] - 1 : interval[1]].strip()
+
+            # Validate raw string before preprocessing
+            if hasattr(validator, "search"):
+                valid = validator.search(field) is not None
+            else:
+                valid = validator(field)
+            if not valid and len(field) > 0:
+                tqdm.write(f"Line {line_idx} > cannot parse {key}: {field}")
+
             if preprocessor:
                 field = preprocessor(field)
-
-            if not validator(field) and len(field) > 0:
-                tqdm.write(f"Line {line_idx} > cannot parse {key}: {field}")
 
             catalogue_entry[key] = field
 
