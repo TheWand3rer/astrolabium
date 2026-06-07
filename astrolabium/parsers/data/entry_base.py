@@ -28,9 +28,9 @@ class EntryBase:
             try:
                 if EntryBase.is_string(key, data, null_values):
                     value = data[key]
-                    if preprocessor:
-                        value = preprocessor(value)
                     if value is not None:
+                        if preprocessor:
+                            value = preprocessor(value)
                         if type(value) is not Quantity and unit is not None:
                             value *= unit
                         setattr(self, key, value)
