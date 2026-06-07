@@ -23,7 +23,8 @@ dependencies = [
     "astropy",
     "anytree",
     "tqdm",
-    "SPARQLWrapper"
+    "SPARQLWrapper",
+    "python-dotenv>=1.0.0",
 ]
 
 [tool.setuptools]
