@@ -2,7 +2,7 @@ from astrolabium import fileIO as io, config
 from astrolabium.parsers import HipparcosParser, WDSParser, Orb6Parser
 from astrolabium.parsers.data import WikidataStar, Text
 from astrolabium.catalogues import Hipparcos, WDS, Crossref, filters
-from astrolabium.queries import WikiEntities, gaia
+from astrolabium.queries import WikiEntities, gaia, wikimedia
 from astrolabium.creator import WDSAnalyser, Star, System, Galaxy
 import datetime
 import logging
@@ -20,6 +20,7 @@ class CatalogueCreator:
         catalogue_path=f"{config.path_datadir}/hipparcos2007",
         entities_path=f"{config.path_entitiesdir}/hipparcos2007_entities",
         verbose=False,
+        use_wikimedia_fallback=False,
     ):
         self.verbose = verbose
         self.lyr = lyr
@@ -28,6 +29,8 @@ class CatalogueCreator:
         self.iau_entities_path = f"{config.path_entitiesdir}/IAU_entities"
         self.output_catalogue_path = f"{config.path_outdir}/catalogue_{self.lyr}_ly"
         self._use_entities = True
+        self._use_wikimedia_fallback = use_wikimedia_fallback
+        self._wikimedia_client = None
         self._analyser: WDSAnalyser = None
         logging.root.setLevel(logging.INFO)
         logging.basicConfig(format="%(message)s")
@@ -77,7 +80,17 @@ class CatalogueCreator:
         for entry in systems_within_distance:
             if "WDS" in entry:
                 continue
-            star = Star(catalogue_entry=entry, crossref=entry)
+            # entry is a dict (merged HipparcosEntry.to_dict() + crossref).
+            # Build Star-compatible dict from the Hipparcos fields, then let
+            # Star merge crossref fields (otypes, sc, etc.).
+            star_data = {
+                "id": f"HIP {entry['HIP']}" if entry.get("HIP") else None,
+                "Name": f"HIP {entry['HIP']}" if entry.get("HIP") else None,
+                "ra": entry.get("ra"),
+                "dec": entry.get("de"),
+                "d": entry.get("d"),
+            }
+            star = Star(catalogue_entry=star_data, crossref=entry)
             name = Text.classic_system_name(entry)
             systems.append(System(name, star))
 
@@ -143,6 +156,43 @@ class CatalogueCreator:
                 entity = wikiCatalog.query(star.id)
                 if entity is not None:
                     star.add_properties(entity)
+                    self.__apply_wikimedia_fallback(star, entity)
+
+    def __apply_wikimedia_fallback(self, star: Star, entity: WikidataStar) -> None:
+        """Fill missing physical data fields from Wikimedia infobox.
+
+        Only runs when ``use_wikimedia_fallback=True``. Initializes the
+        Wikimedia client lazily on first call.
+        """
+        if not self._use_wikimedia_fallback:
+            return
+
+        if self._wikimedia_client is None:
+            try:
+                self._wikimedia_client = wikimedia.WikimediaClient()
+                self._wikimedia_client.authenticate()
+                logger.info("> Wikimedia fallback client initialized")
+            except ValueError:
+                logger.warning(
+                    "Wikimedia fallback enabled but credentials not found. "
+                    "Set WIKIMEDIA_USERNAME and WIKIMEDIA_PASSWORD in .env"
+                )
+                self._wikimedia_client = None  # Prevent repeated attempts
+
+        if self._wikimedia_client is None or not self._wikimedia_client.is_authenticated():
+            return
+
+        qid = getattr(entity, "qid", None)
+        if not qid:
+            return
+
+        wm_data = self._wikimedia_client.fetch_parsed_by_qid(qid)
+        if wm_data:
+            set_fields = star.add_wikimedia_properties(wm_data)
+            if set_fields:
+                logger.info(
+                    f"  {star.id}: filled missing fields via Wikimedia: {', '.join(set_fields)}"
+                )
 
     def update_names_from_IAU(self, table, namekey="Name"):
         # TODO: ensure IAU names overwrite names we might get from other sources

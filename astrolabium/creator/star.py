@@ -1,9 +1,12 @@
-from astrolabium.parsers.data import EntryBase, HipparcosEntry, Orb6Entry, WikidataStar
+from astrolabium.parsers.data import EntryBase, Orb6Entry, WikidataStar, WikimediaStar
 from astropy import units as u
 from astropy.coordinates import SkyCoord, ICRS, Galactic
 from tqdm import tqdm
 from typing import Any, Tuple
+import logging
 import math
+
+logger = logging.getLogger(__name__)
 
 
 class Star(EntryBase):
@@ -56,13 +59,10 @@ class Star(EntryBase):
                 del data["Name"]
 
         if catalogue_entry is not None:
-            if not isinstance(catalogue_entry, HipparcosEntry):
-                catalogue_entry = HipparcosEntry(catalogue_entry)
-            data = data | catalogue_entry.to_dict()
-            data["id"] = catalogue_entry.id
-            # renaming de_clination to dec_lination
-            data["dec"] = data["de"]
-            data["d"] = catalogue_entry.d
+            # catalogue_entry is expected to be a dict with keys matching Star.key_settings.
+            # Each entry class's to_star() is responsible for building this dict.
+            if isinstance(catalogue_entry, dict):
+                data = data | catalogue_entry
 
         self._parse_values(self.key_settings, data)
 
@@ -112,6 +112,56 @@ class Star(EntryBase):
             if value is not None:
                 setattr(self, prop, value)
 
+    def add_wikimedia(self, wikimedia_star: WikimediaStar) -> list[str]:
+        """Fill missing physical data fields from a WikimediaStar.
+
+        Only sets fields that are currently None on the star. If a field
+        already has a value (e.g. from Wikidata), it is preserved. Large
+        discrepancies between existing and new values are logged as warnings.
+
+        :param wikimedia_star: A WikimediaStar instance containing parsed
+                               infobox data as astropy Quantities.
+        :return: List of field names that were actually set.
+        """
+        physical_fields: list[str] = ["l", "m", "t", "g", "age", "r"]
+        set_fields: list[str] = []
+
+        for field in physical_fields:
+            existing_value = getattr(self, field, None)
+            new_value = getattr(wikimedia_star, field, None)
+
+            if new_value is None:
+                continue
+
+            if existing_value is not None:
+                # Field already set — check for large discrepancy
+                try:
+                    if isinstance(new_value, u.Quantity) and isinstance(existing_value, u.Quantity):
+                        # Compare in the same unit
+                        try:
+                            new_val = new_value.to(existing_value.unit).value
+                            existing_val = existing_value.value
+                            if existing_val > 0:
+                                diff_pct = abs(new_val - existing_val) / abs(existing_val) * 100
+                                if diff_pct > 20:
+                                    logger.warning(
+                                        f"{self.id}: Wikimedia value for '{field}' "
+                                        f"({new_value}) differs by {diff_pct:.1f}% "
+                                        f"from existing Wikidata value "
+                                        f"({existing_val} {existing_value.unit})"
+                                    )
+                        except (u.UnitConversionError, ValueError):
+                            pass
+                except (ValueError, TypeError):
+                    pass
+                continue
+
+            # Field is missing — set it
+            setattr(self, field, new_value)
+            set_fields.append(field)
+
+        return set_fields
+
     def to_string(self, indent_spaces=3):
         (x, y, z) = self.xyz
         string = super().to_string(indent_spaces)
@@ -136,6 +186,36 @@ class Star(EntryBase):
         y = d.value * math.cos(b.value) * math.sin(l.value)
         z = d.value * math.sin(b.value)
         return (x, y, z)
+
+    def has_required_physical_data(self) -> bool:
+        """Check whether this star has the minimum required physical data.
+
+        The game requires at least one of Mass (m) or Luminosity (l),
+        plus Temperature (t). A star is considered valid if it has
+        temperature AND (mass OR luminosity).
+
+        :return: True if the star has sufficient physical data,
+                 False otherwise.
+        """
+        has_temp = getattr(self, "t", None) is not None
+        has_mass = getattr(self, "m", None) is not None
+        has_lum = getattr(self, "l", None) is not None
+        return has_temp and (has_mass or has_lum)
+
+    def has_required_orbital_data(self) -> bool:
+        """Check whether this star component has required orbital data.
+
+        For binary/multiple star components, the game requires separation (a),
+        eccentricity (e), and period (P).
+
+        :return: True if all three orbital parameters are present,
+                 False otherwise.
+        """
+        return (
+            getattr(self, "a", None) is not None
+            and getattr(self, "e", None) is not None
+            and getattr(self, "P", None) is not None
+        )
 
     @classmethod
     def preorder_visit(cls, star: "Star"):

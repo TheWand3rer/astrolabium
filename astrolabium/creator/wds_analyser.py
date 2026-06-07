@@ -203,7 +203,7 @@ class WDSAnalyser:
 
             if orbiter_entry:
                 orbiter_crossref = next(x for x in crossref if x["HIP"] == orbiter_entry.HIP)
-                orbiter = Star(orbiter_entry, orbiter_orbit, orbiter_crossref)
+                orbiter = Star(orbiter_entry.to_star_dict(), orbiter_orbit, orbiter_crossref)
             else:
                 orbiter = Star(None, orbiter_orbit, orbiter_crossref, primary.d)
 
