@@ -2,7 +2,6 @@ import json
 import os
 import requests
 import time
-from importlib.metadata import version
 from SPARQLWrapper import SPARQLWrapper, JSON
 from tqdm import tqdm, trange
 from typing import Any
@@ -13,13 +12,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-__user_agent: str = f"astrolabium/{version('astrolabium')}"
 
+def _get_user_agent() -> str:
+    """Get the User-Agent string from environment, with a sensible default."""
+    return os.getenv("WIKIDATA_USER_AGENT", "astrolabium")
 
-def set_user_agent(user_agent: str) -> None:
-    """Override the User-Agent header used for all Wikidata HTTP requests."""
-    global __user_agent
-    __user_agent = user_agent
 
 class Wikidata:
     prop_Parts = "P527"
@@ -260,18 +257,36 @@ class Wikidata:
     @staticmethod
     def get_entity(qid) -> dict:
         url = f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
-        headers = {"User-Agent": __user_agent}
+        headers = {"User-Agent": _get_user_agent()}
         r = requests.get(url, headers=headers)
         data = r.json()
         entity = data["entities"][qid]
         return entity
 
     @staticmethod
+    def get_page_name(entity: dict, lang: str = "en") -> str | None:
+        """Extract the Wikipedia page name from a Wikidata entity.
+
+        Looks up the Wikipedia sitelink for the given language and returns
+        the page title (with underscores, e.g. "Alpha_Centauri").
+
+        :param entity: Wikidata entity dict (as returned by :meth:`get_entity`).
+        :param lang: Language code for the Wikipedia sitelink (default: "en").
+        :return: Wikipedia page name, or None if no sitelink found.
+        """
+        sitelinks = entity.get("sitelinks", {})
+        wiki_key = f"{lang}wiki"
+        wiki = sitelinks.get(wiki_key)
+        if wiki:
+            return wiki.get("title")
+        return None
+
+    @staticmethod
     def get_entities(qids):
         assert len(qids) <= 50, "size > 50"
         batch = "|".join(qids)
         url = f"https://www.wikidata.org/w/api.php?action=wbgetentities&ids={batch}&format=json"
-        headers = {"User-Agent": __user_agent}
+        headers = {"User-Agent": _get_user_agent()}
         response = requests.get(url, headers=headers)
         data = response.json()
         return data["entities"]
@@ -323,7 +338,7 @@ class Wikidata:
             "language": "en",
             "format": "json",
         }
-        headers = {"User-Agent": __user_agent}
+        headers = {"User-Agent": _get_user_agent()}
         r = requests.get(url, params=params, headers=headers)
         data = r.json()
         if data.get("search"):
@@ -410,7 +425,7 @@ class Wikidata:
     def get_unit_symbol(qid, lang="en"):
         url = f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
         try:
-            headers = {"User-Agent": __user_agent}
+            headers = {"User-Agent": _get_user_agent()}
             r = requests.get(url, headers=headers)
             data = r.json()
             claims = data["entities"][qid]["claims"]
