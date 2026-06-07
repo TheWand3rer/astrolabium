@@ -58,3 +58,6 @@ mypy.ini
 data/
 temp/
 out/
+
+# Except parsers data (entry classes)
+!astrolabium/parsers/data/
