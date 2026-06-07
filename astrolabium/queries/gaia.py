@@ -4,8 +4,66 @@ from astropy.coordinates import SkyCoord, Distance
 from astropy.time import Time
 from astrolabium.creator.star import Star
 import logging
+import os
 
 logger = logging.getLogger(__name__)
+
+__gaia_authenticated: bool = False
+
+
+def login(user: str | None = None, password: str | None = None) -> bool:
+    """Authenticate with the Gaia archive.
+
+    Credentials are read from environment variables if not provided:
+        - GAIADATA_USER
+        - GAIADATA_PASSWORD
+
+    Args:
+        user: Gaia archive username. Defaults to GAIADATA_USER env var.
+        password: Gaia archive password. Defaults to GAIADATA_PASSWORD env var.
+
+    Returns:
+        True if authentication succeeded, False otherwise.
+    """
+    global __gaia_authenticated
+    if __gaia_authenticated:
+        logger.debug("Already authenticated with Gaia archive")
+        return True
+
+    user = user or os.environ.get("GAIADATA_USER")
+    password = password or os.environ.get("GAIADATA_PASSWORD")
+
+    if not user or not password:
+        logger.warning(
+            "Gaia credentials not found. Set GAIADATA_USER and "
+            "GAIADATA_PASSWORD environment variables, or pass them to login(). "
+            "Queries will work with rate-limited public access."
+        )
+        return False
+
+    try:
+        Gaia.login(user=user, password=password)
+        __gaia_authenticated = True
+        logger.info("Authenticated with Gaia archive as '%s'", user)
+        return True
+    except Exception as exc:
+        logger.error("Gaia authentication failed: %s", exc)
+        return False
+
+
+def logout() -> None:
+    """Logout from the Gaia archive."""
+    global __gaia_authenticated
+    try:
+        Gaia.logout()
+    except Exception:
+        pass
+    __gaia_authenticated = False
+
+
+def is_authenticated() -> bool:
+    """Return True if currently authenticated with the Gaia archive."""
+    return __gaia_authenticated
 
 __gaia_dr3_columns: dict[str, u.Quantity] = {
     "source_id": None,
@@ -57,6 +115,21 @@ __gaia_to_star_properties: dict[str, str] = {
 
 
 def retrieve_data(source_ids: list[int], gaiadr=3):
+    """Retrieve Gaia DR data for a list of source IDs.
+
+    Args:
+        source_ids: List of Gaia source IDs to query.
+        gaiadr: Gaia data release number (default 3).
+
+    Returns:
+        Dict mapping source_id -> dict of column values with units.
+
+    Raises:
+        ValueError: If source_ids is empty.
+    """
+    if not source_ids:
+        raise ValueError("source_ids must not be empty")
+
     query = f"SELECT {', '.join(__gaia_dr3_columns)} FROM gaiadr{gaiadr}.gaia_source WHERE source_id IN ({', '.join(map(str, source_ids))})"
     job = Gaia.launch_job(query)
     results = job.get_results()
@@ -74,7 +147,7 @@ def retrieve_data(source_ids: list[int], gaiadr=3):
                 entry[col] = value
         data[source_id] = entry
 
-    logger.info(f"Retrieved {len(data)} rows from Gaia DR{gaiadr}")
+    logger.info("Retrieved %d rows from Gaia DR%d", len(data), gaiadr)
     return data
 
 
