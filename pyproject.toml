@@ -4,7 +4,7 @@ description = "This project combines data from several stellar catalogues (e.g.,
 authors = [
     {name = "Vindemiatrix Collective", email="vindemiatrixcollective@gmail.com"}
 ]
-version = "0.1.1"
+version = "0.1.3"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
@@ -23,7 +23,8 @@ dependencies = [
     "astropy",
     "anytree",
     "tqdm",
-    "SPARQLWrapper"
+    "SPARQLWrapper",
+    "python-dotenv>=1.0.0",
 ]
 
 [tool.setuptools]

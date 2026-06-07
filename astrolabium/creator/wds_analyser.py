@@ -123,16 +123,15 @@ class WDSAnalyser:
                         node = nodes[0]
                         if node.parent.name != node1.parent.name:  # use other node parent
                             node.parent = None
-                    else:
-                        if len(nodes) == 2:
-                            depth1 = nodes[0].depth
-                            depth2 = nodes[1].depth
-                            if depth1 > depth2:
-                                nodes[1].parent = None  # keep node with the most depth
-                            else:
-                                nodes[0].parent = None  # keep node with the most depth
+                    elif len(nodes) == 2:
+                        node0parent = nodes[0].parent.name
+                        node1parent = nodes[1].parent.name
+                        if node0parent < node1parent:
+                            nodes[1].parent = None
                         else:
-                            raise ValueError("Unexpected branch")
+                            nodes[0].parent = None
+                    else:
+                        raise ValueError("Unexpected branch")
             else:
                 if len(sub) == 1:
                     component = sub[0] if sub[0] != "" else "A"
@@ -151,13 +150,22 @@ class WDSAnalyser:
         companion_orbits = self.__find_orbits(root, self.__orb6.select_entries(wds_id))
         stars_catalog = self.__find_catalogue_entries(system_crossref)
 
-        if "A" not in stars_catalog:
-            return None
+        if "A" not in stars_catalog and "AB" in stars_catalog and stars_catalog["AB"] is not None:
+            star = stars_catalog["AB"]
+            del stars_catalog["AB"]
+            stars_catalog["A"] = star
+            
+        if "Aa" in stars_catalog:
+            raise ValueError("Oh no!" + stars_catalog.keys())
 
         if stars_catalog is not None:
             for component in stars:
                 if component not in stars_catalog:
                     stars_catalog[component] = None
+
+        if "A" not in stars_catalog or stars_catalog["A"] is None:
+            logger.warning(f"System {wds_id} has no primary!")
+            return None
 
         if self.verbose:
             self.print_system_tree(root)
@@ -173,7 +181,8 @@ class WDSAnalyser:
         spectral_types=dict[str, str],
     ) -> System:
         primary = stars["A"]
-        assert primary is not None, "primary"
+        if primary is None:
+            raise KeyError(f"primary {stars.keys()}")
 
         crossref_entry = self.crossref.query_catalogue_code(primary.id)
         system = System(Text.classic_system_name(crossref_entry))
@@ -194,9 +203,9 @@ class WDSAnalyser:
 
             if orbiter_entry:
                 orbiter_crossref = next(x for x in crossref if x["HIP"] == orbiter_entry.HIP)
-                orbiter = Star(orbiter_entry, orbiter_orbit, orbiter_crossref)
+                orbiter = Star(orbiter_entry.to_star_dict(), orbiter_orbit, orbiter_crossref)
             else:
-                orbiter = Star(stars["A"], orbiter_orbit, orbiter_crossref)
+                orbiter = Star(None, orbiter_orbit, orbiter_crossref, primary.d)
 
             if orbiter.Name is None:
                 orbiter.Name = node.name
@@ -289,5 +298,8 @@ class WDSAnalyser:
         Reconstructs the hierarchy of the given WDS id entries using information from ORB6.
         "14396-6050" corresponds to the entries for the Alpha Centauri AB(C) system
         """
-        wds_entries = self.__wds.select_entries([wds_id])
-        return self.__detect_hierarchy(wds_id, wds_entries)
+        wds_entries = self.__wds.select_entries_grouped(wds_ids=[wds_id])
+        system = self.__detect_hierarchy(wds_id, wds_entries[wds_id])
+        if system is None:
+            logger.warning(f"System {wds_id} is invalid")
+        return system

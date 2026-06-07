@@ -1,12 +1,22 @@
+import json
+import os
 import requests
 import time
 from SPARQLWrapper import SPARQLWrapper, JSON
 from tqdm import tqdm, trange
 from typing import Any
+import astrolabium.config as config
+from astrolabium import fileIO as io
 from astrolabium.parsers.data import WikidataStar
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _get_user_agent() -> str:
+    """Get the User-Agent string from environment, with a sensible default."""
+    return os.getenv("WIKIDATA_USER_AGENT", "astrolabium")
+
 
 class Wikidata:
     prop_Parts = "P527"
@@ -247,17 +257,37 @@ class Wikidata:
     @staticmethod
     def get_entity(qid) -> dict:
         url = f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
-        r = requests.get(url)
+        headers = {"User-Agent": _get_user_agent()}
+        r = requests.get(url, headers=headers)
         data = r.json()
         entity = data["entities"][qid]
         return entity
+
+    @staticmethod
+    def get_page_name(entity: dict, lang: str = "en") -> str | None:
+        """Extract the Wikipedia page name from a Wikidata entity.
+
+        Looks up the Wikipedia sitelink for the given language and returns
+        the page title (with underscores, e.g. "Alpha_Centauri").
+
+        :param entity: Wikidata entity dict (as returned by :meth:`get_entity`).
+        :param lang: Language code for the Wikipedia sitelink (default: "en").
+        :return: Wikipedia page name, or None if no sitelink found.
+        """
+        sitelinks = entity.get("sitelinks", {})
+        wiki_key = f"{lang}wiki"
+        wiki = sitelinks.get(wiki_key)
+        if wiki:
+            return wiki.get("title")
+        return None
 
     @staticmethod
     def get_entities(qids):
         assert len(qids) <= 50, "size > 50"
         batch = "|".join(qids)
         url = f"https://www.wikidata.org/w/api.php?action=wbgetentities&ids={batch}&format=json"
-        response = requests.get(url)
+        headers = {"User-Agent": _get_user_agent()}
+        response = requests.get(url, headers=headers)
         data = response.json()
         return data["entities"]
 
@@ -270,7 +300,10 @@ class Wikidata:
         try:
             for i in trange(0, n, batch_size, colour="GREEN", desc="Wikidata"):
                 batch = qids[i : i + batch_size]
-                tqdm.write(f"Requesting entities {i} to {min(i + batch_size, n)} from Wikidata")
+                try:
+                    tqdm.write(f"Requesting entities {i} to {min(i + batch_size, n)} from Wikidata")
+                except UnicodeEncodeError:
+                    logger.warning(f"Requesting entities {i} to {min(i + batch_size, n)} from Wikidata")
                 iau_entities = Wikidata.get_entities(batch)
                 for qid, entity in iau_entities.items():
                     if parse_properties:
@@ -284,7 +317,10 @@ class Wikidata:
                         label = entity.get("labels", {}).get("en", {}).get("value")
                         entries[qid] = label
 
-                    tqdm.write(f"   > Parsing qid:{qid} [{label}]")
+                    try:
+                        tqdm.write(f"   > Parsing qid:{qid} [{label}]")
+                    except UnicodeEncodeError:
+                        logger.warning(f"   > Parsing qid:{qid} [{label}]")
                 time.sleep(0.250)
         except KeyboardInterrupt:
             pass
@@ -302,7 +338,8 @@ class Wikidata:
             "language": "en",
             "format": "json",
         }
-        r = requests.get(url, params=params)
+        headers = {"User-Agent": _get_user_agent()}
+        r = requests.get(url, params=params, headers=headers)
         data = r.json()
         if data.get("search"):
             return data["search"]  # Return top result's Qid
@@ -345,12 +382,24 @@ class Wikidata:
             raise e
 
     @staticmethod
-    def get_qids_from_catalogue_entries(catalogue_qid: str, catalogue_label: str, catalogue_ids: list):
+    def get_qids_from_catalogue_entries(catalogue_qid: str, catalogue_label: str, catalogue_ids: list, catalogue_name: str | None = None):
         """
         :param catalogue_id: the Qid of the catalogue type from wikidata. For example, "Q537199" for the Hipparcos catalogue
         :param catalogue_label: The prefix label for the catalogue, for example "HIP" for Hipparcos or "Gaia DR3"
         :catalogue_ids: a list of catalogue ids without the label
+        :catalogue_name: Human-readable catalogue name used for the cache filename. Defaults to catalogue_label.
         """
+        name = catalogue_name or catalogue_label.lower()
+        cache_path = f"{config.path_datadir}/{name}_{catalogue_qid}_qids"
+        if os.path.isfile(f"{cache_path}.json"):
+            logger.info(f"Loading {catalogue_label} qids from cache: {cache_path}")
+            cache = io.read_list_json(cache_path)
+            cache_map = {entry["id"]: entry for entry in cache}
+            results = [cache_map[f"{catalogue_label} {cid}"] for cid in catalogue_ids if f"{catalogue_label} {cid}" in cache_map]
+            logger.info(f"  Found {len(results)} / {len(catalogue_ids)} entries in cache")
+            return results
+
+        logger.info(f"No cache for {catalogue_label}, querying Wikidata SPARQL")
         id_list = " ".join(f'"{catalogue_label} {id}"' for id in catalogue_ids)
         query = f"""
         SELECT ?qid ?qidLabel ?id WHERE {{
@@ -365,13 +414,19 @@ class Wikidata:
         for result in results:
             if result["qidLabel"] == result["qid"]:
                 del result["qidLabel"]
+
+        if results:
+            io.write_list_json(results, cache_path)
+            logger.info(f"  Saved {len(results)} entries to cache: {cache_path}")
+
         return results
 
     @staticmethod
     def get_unit_symbol(qid, lang="en"):
         url = f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json"
         try:
-            r = requests.get(url)
+            headers = {"User-Agent": _get_user_agent()}
+            r = requests.get(url, headers=headers)
             data = r.json()
             claims = data["entities"][qid]["claims"]
             symbols = claims.get("P5061", [])
